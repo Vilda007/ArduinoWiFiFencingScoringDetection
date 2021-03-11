@@ -1,15 +1,25 @@
-const char NodeName[] PROGMEM = "Fencer1_";      // node (device) name in mesh
-const int lastIP = 1;                           // last number of fixed IP (192.168.4.lastIP)
-const char MeshName[] PROGMEM = "FencerMesh_";   // mesh name
-const char WiFiPassword[] PROGMEM = "dArtagnan"; // mesh password
-
 // Definings
+// Mesh
+#define   MESH_NODE       "Base"          // name of the node
+//#define   MESH_NODE        "Fenc1"         // name of the node
+//#define   MESH_NODE        "Fenc2"         // name of the node
+#define   MESH_SSID       "FencerMesh"    // mesh name
+#define   MESH_PASSWORD   "dArtagnan"     // mesh password
+#define   MESH_PORT       5555            // mesh port (5555)
+
+// some gpio pin that is connected to an LED...
+// on my rig, this is 5, change to the right number of your LED.
+#define   LED             D4       // GPIO number of connected LED, ON ESP-12 IS GPIO2
+
+#define   BLINK_PERIOD    3000 // milliseconds until cycle repeat
+#define   BLINK_DURATION  100  // milliseconds LED is on for
+
 // 8x8 LED display driver type hardware type
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
 //#define HARDWARE_TYPE MD_MAX72XX::GENERIC_HW
 
-#define MAX_DEVICES 1 //Number of 8x8 LED displays
-#define CS_PIN D6 
+#define MAX_DEVICES 1 // Number of 8x8 LED displays
+#define CS_PIN D6     // Cable Select PIN (D6)
 /*
  * CS  - MISO/D6
  * DIN - MOSI/D7
