@@ -1,186 +1,186 @@
+/*
+  Arduino based Fencing Scoring detection
+  https://github.com/Vilda007/ArduinoWiFiFencingScoringDetection
+
+  This code has been heavily inspired by the examples you can find at
+  https://www.arduino.cc/en/Tutorial/HomePage
+*/
+
 #include <ESP8266WiFi.h>
 #include <ESP8266WiFiMesh.h>
 #include <TypeConversionFunctions.h>
 #include <assert.h>
 #include "config.h"
+//#include <painlessMesh.h>
+#include "namedMesh.h"
 
-/**
-   NOTE: Although we could define the strings below as normal String variables,
-   here we are using PROGMEM combined with the FPSTR() macro (and also just the F() macro further down in the file).
-   The reason is that this approach will place the strings in flash memory which will help save RAM during program execution.
-   Reading strings from flash will be slower than reading them from RAM,
-   but this will be a negligible difference when printing them to Serial.
+// Prototypes
+void sendMessage();
+void receivedCallback(uint32_t from, String & msg);
+void newConnectionCallback(uint32_t nodeId);
+void changedConnectionCallback();
+void nodeTimeAdjustedCallback(int32_t offset);
+void delayReceivedCallback(uint32_t from, int32_t delay);
+void CheckHitCallback();
+void SendHitCallback();
 
-   More on F(), FPSTR() and PROGMEM:
-   https://github.com/esp8266/Arduino/issues/1143
-   https://arduino-esp8266.readthedocs.io/en/latest/PROGMEM.html
-*/
-unsigned int requestNumber = 0;
-unsigned int responseNumber = 0;
+Scheduler     ts; // to control your personal task
+//painlessMesh  mesh;
+namedMesh  mesh;
 
-String manageRequest(const String &request, ESP8266WiFiMesh &meshInstance);
-transmission_status_t manageResponse(const String &response, ESP8266WiFiMesh &meshInstance);
-void networkFilter(int numberOfNetworks, ESP8266WiFiMesh &meshInstance);
+bool calc_delay = false;
+SimpleList<uint32_t> nodes;
 
-/* Create the mesh node object */
-ESP8266WiFiMesh meshNode = ESP8266WiFiMesh(manageRequest, manageResponse, networkFilter, FPSTR(WiFiPassword), FPSTR(MeshName), "", true);
+void sendMessage() ; // Prototype
+//Task taskSendMessage( TASK_SECOND * 1, TASK_FOREVER, &sendMessage ); // start with a one second interval
 
-/**
-   Callback for when other nodes send you a request
-
-   @param request The request string received from another node in the mesh
-   @param meshInstance The ESP8266WiFiMesh instance that called the function.
-   @returns The string to send back to the other node
-*/
-String manageRequest(const String &request, ESP8266WiFiMesh &meshInstance) {
-  // We do not store strings in flash (via F()) in this function.
-  // The reason is that the other node will be waiting for our response,
-  // so keeping the strings in RAM will give a (small) improvement in response time.
-  // Of course, it is advised to adjust this approach based on RAM requirements.
-
-  /* Print out received message */
-  Serial.print("Request received: ");
-  Serial.println(request);
-
-  /* return a string to send back */
-  return ("Fencer1 response #" + String(responseNumber++) + " from " + meshInstance.getMeshName() + meshInstance.getNodeID() + ".");
-}
-
-/**
-   Callback for when you get a response from other nodes
-
-   @param response The response string received from another node in the mesh
-   @param meshInstance The ESP8266WiFiMesh instance that called the function.
-   @returns The status code resulting from the response, as an int
-*/
-transmission_status_t manageResponse(const String &response, ESP8266WiFiMesh &meshInstance) {
-  transmission_status_t statusCode = TS_TRANSMISSION_COMPLETE;
-
-  /* Print out received message */
-  Serial.print(F("Request sent: "));
-  Serial.println(meshInstance.getMessage());
-  Serial.print(F("Response received: "));
-  Serial.println(response);
-
-  // Our last request got a response, so time to create a new request.
-  meshInstance.setMessage(String(F("Fencer1 hit #")) + String(++requestNumber) + String(F(" from "))
-                          + meshInstance.getMeshName() + meshInstance.getNodeID() + String(F(".")));
-
-  // (void)meshInstance; // This is useful to remove a "unused parameter" compiler warning. Does nothing else.
-  return statusCode;
-}
-
-/**
-   Callback used to decide which networks to connect to once a WiFi scan has been completed.
-
-   @param numberOfNetworks The number of networks found in the WiFi scan.
-   @param meshInstance The ESP8266WiFiMesh instance that called the function.
-*/
-void networkFilter(int numberOfNetworks, ESP8266WiFiMesh &meshInstance) {
-  for (int networkIndex = 0; networkIndex < numberOfNetworks; ++networkIndex) {
-    String currentSSID = WiFi.SSID(networkIndex);
-    int meshNameIndex = currentSSID.indexOf(meshInstance.getMeshName());
-
-    /* Connect to any _suitable_ APs which contain meshInstance.getMeshName() */
-    if (meshNameIndex >= 0) {
-      uint64_t targetNodeID = stringToUint64(currentSSID.substring(meshNameIndex + meshInstance.getMeshName().length()));
-
-      if (targetNodeID < stringToUint64(meshInstance.getNodeID())) {
-        ESP8266WiFiMesh::connectionQueue.push_back(NetworkInfo(networkIndex));
-      }
-    }
-  }
-}
+// Task to blink the number of nodes
+Task blinkNoNodes;
+Task CheckHit(TASK_IMMEDIATE, TASK_FOREVER, &CheckHitCallback, &ts, false);
+Task SendHit(TASK_IMMEDIATE, TASK_FOREVER, &SendHitCallback, &ts, false);
+bool onFlag = false;
 
 void setup() {
-  pinMode(GreenLED, OUTPUT); // Green LED
-  pinMode(RedLED, OUTPUT);   // Red LED
-  pinMode(Hit, INPUT);       // Epee (hit detection)
-
-  //just a "awaken" signal
-  for (int i = 0; i <= 5; i++) {
-    digitalWrite(GreenLED, LOW);
-    digitalWrite(RedLED, LOW);
-    delay(250);
-    digitalWrite(GreenLED, HIGH);
-    digitalWrite(RedLED, HIGH);
-    delay(250);
-  }
-  
-  
-  // Prevents the flash memory from being worn out, see: https://github.com/esp8266/Arduino/issues/1054 .
-  // This will however delay node WiFi start-up by about 700 ms. The delay is 900 ms if we otherwise would have stored the WiFi network we want to connect to.
-  WiFi.persistent(false);
-
+  // open the serial port at 115200 bps:
   Serial.begin(115200);
-  delay(50); // Wait for Serial.
 
-  //yield(); // Use this if you don't want to wait for Serial.
+  // initialize the LED pins as an output:
+  pinMode(GreenLED, OUTPUT);
+  digitalWrite(GreenLED, HIGH);
+  pinMode(RedLED, OUTPUT);
+  digitalWrite(RedLED, HIGH);
 
-  // The WiFi.disconnect() ensures that the WiFi is working correctly. If this is not done before receiving WiFi connections,
-  // those WiFi connections will take a long time to make or sometimes will not work at all.
-  WiFi.disconnect();
+  // initialize the pushbutton pin as an input:
+  pinMode(Hit, INPUT);
 
-  Serial.println();
-  Serial.println();
+  // initialize mesh
+  mesh.setDebugMsgTypes(ERROR | DEBUG | CONNECTION);  // set before init() so that you can see error messages
+  mesh.init(MESH_SSID, MESH_PASSWORD, &ts, MESH_PORT);
+  mesh.setName(MyNodeName);
+  //mesh.onReceive(&receivedCallback);
+  mesh.onReceive([](uint32_t from, String &msg) {
+    //Serial.printf("Received message by id from: %u, %s\n", from, msg.c_str());
+  });
 
-  Serial.println(F("Note that this library can use static IP:s for the nodes to speed up connection times.\n"
-                   "Use the setStaticIP method as shown in this example to enable this.\n"
-                   "Ensure that nodes connecting to the same AP have distinct static IP:s.\n"
-                   "Also, remember to change the default mesh network password!\n\n"));
+  mesh.onReceive([](String &from, String &msg) {
+    Serial.printf("Received message by name from: %s, %s\n", from.c_str(), msg.c_str());
+    if(msg == BlockMsg){
+      digitalWrite(RedLED, LOW);  
+    }
+    if(msg == deBlockMsg){ 
+      CheckHit.enable(); 
+      digitalWrite(RedLED, HIGH);
+    }
+  });
+  mesh.onNewConnection(&newConnectionCallback);
+  mesh.onChangedConnections(&changedConnectionCallback);
+  mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
+  mesh.onNodeDelayReceived(&delayReceivedCallback);
 
-  Serial.println(F("Setting up mesh node..."));
+  //ts.addTask( taskSendMessage );
+  //taskSendMessage.enable();
 
-  /* Initialise the mesh node */
-  meshNode.begin();
-  meshNode.activateAP(); // Each AP requires a separate server port.
-  meshNode.setStaticIP(IPAddress(192, 168, 4, lastIP)); // Activate static IP mode to speed up connection times.
+  blinkNoNodes.set(BLINK_PERIOD, (mesh.getNodeList().size() + 1) * 2, []() {
+    // If on, switch off, else switch on
+    if (onFlag)
+      onFlag = false;
+    else
+      onFlag = true;
+    blinkNoNodes.delay(BLINK_DURATION);
+
+    if (blinkNoNodes.isLastIteration()) {
+      // Finished blinking. Reset task for next run
+      // blink number of nodes (including this node) times
+      blinkNoNodes.setIterations((mesh.getNodeList().size() + 1) * 2);
+      // Calculate delay based on current mesh time and BLINK_PERIOD
+      // This results in blinks between nodes being synced
+      blinkNoNodes.enableDelayed(BLINK_PERIOD -
+                                 (mesh.getNodeTime() % (BLINK_PERIOD * 1000)) / 1000);
+    }
+  });
+  ts.addTask(blinkNoNodes);
+  blinkNoNodes.enable();
+  CheckHit.enable();
+
+  randomSeed(analogRead(A0));
 }
 
-int32_t timeOfLastScan = -10000;
 void loop() {
-  if (WiFi.status() != WL_CONNECTED) {
-    digitalWrite(GreenLED, HIGH); // Grenn lights off (no connection)
-    digitalWrite(RedLED, LOW);
-  } else {
-    digitalWrite(GreenLED, LOW); // Green lights (connected)  
-    digitalWrite(RedLED, HIGH);
+  mesh.update();
+  digitalWrite(LED, !onFlag);
+}
+
+void CheckHitCallback() {
+  if(digitalRead(Hit) == HIGH){
+    CheckHit.disable();
+    SendHit.enable();
+    Serial.println(digitalRead(Hit));
+  }
+}
+
+void SendHitCallback() {
+  SendHit.disable();
+  mesh.sendSingle(BaseNodeName, HitMsg);
+}
+
+
+void sendMessage() {
+  String msg = "Hello from node ";
+  //msg += mesh.getNodeId();
+  msg += nodeName;
+  msg += " myFreeMemory: " + String(ESP.getFreeHeap());
+  msg += " myMillis: " + String(millis());
+  mesh.sendBroadcast(msg);
+
+  if (calc_delay) {
+    SimpleList<uint32_t>::iterator node = nodes.begin();
+    while (node != nodes.end()) {
+      mesh.startDelayMeas(*node);
+      node++;
+    }
+    calc_delay = false;
   }
 
-  
-  if (millis() - timeOfLastScan > 3000 // Give other nodes some time to connect between data transfers.
-      || (WiFi.status() != WL_CONNECTED && millis() - timeOfLastScan > 2000)) { // Scan for networks with two second intervals when not already connected.    
-    String request = String(F("Fencer1 hit #")) + String(requestNumber) + String(F(" from ")) + meshNode.getMeshName() + meshNode.getNodeID() + String(F("."));
-    meshNode.attemptTransmission(request, false);
-    timeOfLastScan = millis();
+  Serial.printf("Sending message: %s\n", msg.c_str());
 
-    // One way to check how attemptTransmission worked out
-    if (ESP8266WiFiMesh::latestTransmissionSuccessful()) {
-      Serial.println(F("Transmission successful."));
-    }
+  //taskSendMessage.setInterval( random(TASK_SECOND * 1, TASK_SECOND * 5));  // between 1 and 5 seconds
+}
 
-    /*
-    // Another way to check how attemptTransmission worked out
-    if (ESP8266WiFiMesh::latestTransmissionOutcomes.empty()) {
-      Serial.println(F("No mesh AP found."));
-    } else {
-      for (TransmissionResult &transmissionResult : ESP8266WiFiMesh::latestTransmissionOutcomes) {
-        if (transmissionResult.transmissionStatus == TS_TRANSMISSION_FAILED) {
-          Serial.println(String(F("Transmission failed to mesh AP ")) + transmissionResult.SSID);
-        } else if (transmissionResult.transmissionStatus == TS_CONNECTION_FAILED) {
-          Serial.println(String(F("Connection failed to mesh AP ")) + transmissionResult.SSID);
-        } else if (transmissionResult.transmissionStatus == TS_TRANSMISSION_COMPLETE) {
-          // No need to do anything, transmission was successful.
-        } else {
-          Serial.println(String(F("Invalid transmission status for ")) + transmissionResult.SSID + String(F("!")));
-          assert(F("Invalid transmission status returned from responseHandler!") && false);
-        }
-      }
-    }
-    */
-    Serial.println();
-  } else {
-    /* Accept any incoming connections */
-    meshNode.acceptRequest();
+void newConnectionCallback(uint32_t nodeId) {
+  // Reset blink task
+  onFlag = false;
+  blinkNoNodes.setIterations((mesh.getNodeList().size() + 1) * 2);
+  blinkNoNodes.enableDelayed(BLINK_PERIOD - (mesh.getNodeTime() % (BLINK_PERIOD * 1000)) / 1000);
+
+  Serial.printf("--> startHere: New Connection, nodeId = %u\n", nodeId);
+  Serial.printf("--> startHere: New Connection, %s\n", mesh.subConnectionJson(true).c_str());
+}
+
+void changedConnectionCallback() {
+  Serial.printf("Changed connections\n");
+  // Reset blink task
+  onFlag = false;
+  blinkNoNodes.setIterations((mesh.getNodeList().size() + 1) * 2);
+  blinkNoNodes.enableDelayed(BLINK_PERIOD - (mesh.getNodeTime() % (BLINK_PERIOD * 1000)) / 1000);
+
+  nodes = mesh.getNodeList();
+
+  Serial.printf("Num nodes: %d\n", nodes.size());
+  Serial.printf("Connection list:");
+
+  SimpleList<uint32_t>::iterator node = nodes.begin();
+  while (node != nodes.end()) {
+    Serial.printf(" %u", *node);
+    node++;
   }
+  Serial.println();
+  calc_delay = true;
+}
+
+void nodeTimeAdjustedCallback(int32_t offset) {
+  Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(), offset);
+}
+
+void delayReceivedCallback(uint32_t from, int32_t delay) {
+  Serial.printf("Delay to node %u is %d us\n", from, delay);
 }

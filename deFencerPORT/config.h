@@ -1,9 +1,29 @@
-const char NodeName[] PROGMEM = "Fencer1_";      // node (device) name in mesh
-const int lastIP = 10;                           // last number of fixed IP (192.168.4.lastIP)
-const char MeshName[] PROGMEM = "FencerMesh_";   // mesh name
-const char WiFiPassword[] PROGMEM = "dArtagnan"; // mesh password
-
 // Definings
+// Mesh
+String BaseNodeName =     "FencerBase";   // Name needs to be unique  
+String MyNodeName =       "Fencer1";      // Name needs to be unique
+String OponentNodeName =  "Fencer2";      // Name needs to be unique
+String nodeName = MyNodeName;
+#define   MESH_SSID       "FencerMesh"    // mesh name
+#define   MESH_PASSWORD   "dArtagnan"     // mesh password
+#define   MESH_PORT       5555            // mesh port (5555)
+
+String HitMsg = String("Hit by ") + nodeName;
+String BlockMsg = "BLOCK";
+String deBlockMsg = "deBLOCK";
+
+// some gpio pin that is connected to an LED...
+// on my rig, this is 5, change to the right number of your LED.
+#define   LED             D4       // GPIO number of connected LED, ON ESP-12 IS GPIO2
+
+#define   BLINK_PERIOD    3000 // milliseconds until cycle repeat
+#define   BLINK_DURATION  100  // milliseconds LED is on for
+
+// PORT HW Definings
 #define GreenLED D4     // Green LED PIN
 #define RedLED D3       // Red LED PIN
 #define Hit D0          // Hit (score) PIN
+
+// variables will change:
+int FencerHit = 0;                     // Fencer scores
+boolean Blocked = false;               // Hits blocked

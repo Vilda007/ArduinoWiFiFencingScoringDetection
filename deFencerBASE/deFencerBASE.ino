@@ -1,20 +1,6 @@
 /*
   Arduino based Fencing Scoring detection
-  https://github.com/Vilda007/ArduinoFencingScoringDetection
-
-  Wiring:
-  Fencer 1 hit detection (contact) - PIN D2 (+pulldown 100 kOhm)
-  Fencer 2 hit detection (contact) - PIN D4 (+pulldown 100 kOhm)
-  Fencer 1 hit signal LED (yellow) - PIN D5 (+pullup 330 Ohm)
-  Fencer 2 hit signal LED (blue)   - PIN D6 (+pullup 330 Ohm)
-  Ready LED (green)                - PIN D7 (+pullup 330 Ohm)
-  Buzzer                           - PIN D8
-  8x8 LED matrix display with MAX7219
-    CLK                            - PIN D13
-    CS/LOAD                        - PIN D3
-    DIN (Data IN)                  - PIN D11
-    GND                            - GND
-    VCC                            - +5 V
+  https://github.com/Vilda007/ArduinoWiFiFencingScoringDetection
 
   This code has been heavily inspired by the examples you can find at
   https://www.arduino.cc/en/Tutorial/HomePage
@@ -25,27 +11,36 @@
 #include <MD_Parola.h>
 #include <MD_MAX72xx.h>
 #include <SPI.h>
-#include <painlessMesh.h>
+//#include <painlessMesh.h>
+#include "namedMesh.h"
 
 // Prototypes
 void sendMessage();
+void receivedCallback(uint32_t from, String & msg);
 void receivedCallback(uint32_t from, String & msg);
 void newConnectionCallback(uint32_t nodeId);
 void changedConnectionCallback();
 void nodeTimeAdjustedCallback(int32_t offset);
 void delayReceivedCallback(uint32_t from, int32_t delay);
 
-Scheduler     userScheduler; // to control your personal task
-painlessMesh  mesh;
+Scheduler     ts; // to control your personal task
+//painlessMesh  mesh;
+namedMesh  mesh;
 
 bool calc_delay = false;
 SimpleList<uint32_t> nodes;
 
-void sendMessage() ; // Prototype
-Task taskSendMessage( TASK_SECOND * 1, TASK_FOREVER, &sendMessage ); // start with a one second interval
+// Prototypes
+void sendMessage() ; 
+void BlockCallback();
+void deBlockCallback();
+
+//Task taskSendMessage( TASK_SECOND * 1, TASK_FOREVER, &sendMessage ); // start with a one second interval
 
 // Task to blink the number of nodes
 Task blinkNoNodes;
+Task Block(TASK_IMMEDIATE, TASK_FOREVER, &BlockCallback, &ts, false);
+Task deBlock(BlockDuration * TASK_MILLISECOND, TASK_FOREVER, &deBlockCallback, &ts, false);
 bool onFlag = false;
 
 // Create a new instance of the MD_Parola class with hardware SPI connection
@@ -68,16 +63,29 @@ void setup() {
   pinMode(Fencer2, INPUT);
 
   // initialize mesh
-  mesh.setDebugMsgTypes(ERROR | DEBUG);  // set before init() so that you can see error messages
-  mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT);
-  mesh.onReceive(&receivedCallback);
+  mesh.setDebugMsgTypes(ERROR | DEBUG | CONNECTION);  // set before init() so that you can see error messages
+  mesh.init(MESH_SSID, MESH_PASSWORD, &ts, MESH_PORT);
+  mesh.setName(BaseNodeName); 
+  //mesh.onReceive(&receivedCallback);
+  mesh.onReceive([](uint32_t from, String &msg) {
+    //Serial.printf("Received message by id from: %u, %s\n", from, msg.c_str());
+  });
+
+  mesh.onReceive([](String &from, String &msg) {
+    Serial.printf("Received message by name from: %s, %s\n", from.c_str(), msg.c_str());
+    if(msg == F1HitMsg){ //Fencer 1 scores
+      Block.enable();  
+    }
+  });
   mesh.onNewConnection(&newConnectionCallback);
   mesh.onChangedConnections(&changedConnectionCallback);
   mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
   mesh.onNodeDelayReceived(&delayReceivedCallback);
+  mesh.setRoot();
+  mesh.setContainsRoot();
 
-  userScheduler.addTask( taskSendMessage );
-  taskSendMessage.enable();
+  //ts.addTask( taskSendMessage );
+  //taskSendMessage.enable();
 
   blinkNoNodes.set(BLINK_PERIOD, (mesh.getNodeList().size() + 1) * 2, []() {
     // If on, switch off, else switch on
@@ -97,7 +105,7 @@ void setup() {
                                  (mesh.getNodeTime() % (BLINK_PERIOD * 1000)) / 1000);
     }
   });
-  userScheduler.addTask(blinkNoNodes);
+  ts.addTask(blinkNoNodes);
   blinkNoNodes.enable();
 
   randomSeed(analogRead(A0));
@@ -111,6 +119,20 @@ void setup() {
   // Clear the 8x8 LED display
   myDisplay.displayClear();
   myDisplay.displayScroll("0:0", PA_CENTER, PA_SCROLL_LEFT, ScrollSpeed);
+}
+
+void BlockCallback() {
+    Block.disable();
+    mesh.sendBroadcast(BlockMsg);
+    Serial.println("----BLOCK-----");
+    //deBlock.reset();
+    deBlock.enableDelayed();
+}
+
+void deBlockCallback() {
+    deBlock.disable();
+    mesh.sendBroadcast(deBlockMsg);
+    Serial.println("----deBLOCK-----");
 }
 
 //function Hit is called after the hit is detected
@@ -149,25 +171,6 @@ void loop() {
   mesh.update();
   digitalWrite(LED, !onFlag);
 
-  // read the state of the pushbutton value:
-  Fencer1hit = digitalRead(Fencer1);
-  Fencer2hit = digitalRead(Fencer2);
-  //Serial.println(millis()); //just a possible check how long the loop takes
-
-  // Fencer 1 scores
-  if (Fencer1hit == HIGH) {
-    Fencer1hits = Fencer1hits + 1;
-    FencerHitSign = Fencer1HitSign;
-    Hit(Fencer1LED, Fencer1HitSoundHz, Fencer1hits, Fencer2hits);
-  }
-
-  // Fencer 2 scores
-  if (Fencer2hit == HIGH) {
-    Fencer2hits = Fencer2hits + 1;
-    FencerHitSign = Fencer2HitSign;
-    Hit(Fencer2LED, Fencer2HitSoundHz, Fencer1hits, Fencer2hits);
-  }
-
   //scroll the actual score over the 8x8 LED display
   if (myDisplay.displayAnimate()) {
     myDisplay.displayReset();
@@ -178,7 +181,7 @@ void loop() {
 void sendMessage() {
   String msg = "Hello from node ";
   //msg += mesh.getNodeId();
-  msg += MESH_NODE;
+  msg += nodeName;
   msg += " myFreeMemory: " + String(ESP.getFreeHeap());
   mesh.sendBroadcast(msg);
 
@@ -193,12 +196,7 @@ void sendMessage() {
 
   Serial.printf("Sending message: %s\n", msg.c_str());
 
-  taskSendMessage.setInterval( random(TASK_SECOND * 1, TASK_SECOND * 5));  // between 1 and 5 seconds
-}
-
-
-void receivedCallback(uint32_t from, String & msg) {
-  Serial.printf("startHere: Received from %u msg=%s\n", from, msg.c_str());
+  //taskSendMessage.setInterval( random(TASK_SECOND * 1, TASK_SECOND * 5));  // between 1 and 5 seconds
 }
 
 void newConnectionCallback(uint32_t nodeId) {

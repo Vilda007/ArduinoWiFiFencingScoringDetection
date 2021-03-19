@@ -1,11 +1,17 @@
 // Definings
 // Mesh
-#define   MESH_NODE       "Base"          // name of the node
-//#define   MESH_NODE        "Fenc1"         // name of the node
-//#define   MESH_NODE        "Fenc2"         // name of the node
+String BaseNodeName =     "FencerBase";   // Name needs to be unique  
+String F1NodeName =       "Fencer1";      // Name needs to be unique
+String F2NodeName =  "Fencer2";      // Name needs to be unique
+String nodeName = BaseNodeName;
 #define   MESH_SSID       "FencerMesh"    // mesh name
 #define   MESH_PASSWORD   "dArtagnan"     // mesh password
 #define   MESH_PORT       5555            // mesh port (5555)
+
+String F1HitMsg = String("Hit by ") + F1NodeName;
+String F2HitMsg = String("Hit by ") + F2NodeName;
+String BlockMsg = "BLOCK";
+String deBlockMsg = "deBLOCK";
 
 // some gpio pin that is connected to an LED...
 // on my rig, this is 5, change to the right number of your LED.
@@ -40,6 +46,7 @@ const int Fencer1HitSoundHz = 440;       // Fencer 1 hit sound pitch in Hz
 const int Fencer2HitSoundHz = 880;       // Fencer 2 hit sound pitch in Hz
 const int HitSoundDuration = 500;        // Hit sound duration in ms
 const int HitDisplayedDuration = 2000;   // Hit sound duration in ms
+const int BlockDuration = 2000;          // Duration of the block after the hit
 const int ReadySoundHz = 220;            // Ready sound pitch in Hz
 const int ReadySoundDuration = 50;       // Ready sound duration in ms
 const int ScrollSpeed =  200;            // Speed of scrolling in ms
