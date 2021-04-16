@@ -23,7 +23,10 @@ void changedConnectionCallback();
 void nodeTimeAdjustedCallback(int32_t offset);
 void delayReceivedCallback(uint32_t from, int32_t delay);
 
-Scheduler     ts; // to control your personal task
+#define _TASK_PRIORITY
+#define _TASK_TIMECRITICAL
+
+Scheduler     lowts, ts; 
 //painlessMesh  mesh;
 namedMesh  mesh;
 
@@ -34,13 +37,27 @@ SimpleList<uint32_t> nodes;
 void sendMessage() ; 
 void BlockCallback();
 void deBlockCallback();
+void InvertDisplayYesCallback();
+void InvertDisplayNoCallback();
+void WeHaveWinnerCallback();
+void ShowWinnerCallback();
+void ShowScoreCallback();
+void ResetScoreCallback();
+//void AnimateOnDisplayCallback();
 
 //Task taskSendMessage( TASK_SECOND * 1, TASK_FOREVER, &sendMessage ); // start with a one second interval
 
-// Task to blink the number of nodes
-Task blinkNoNodes;
+// Tasks
+Task blinkNoNodes;  // Task to blink the number of nodes
 Task Block(TASK_IMMEDIATE, TASK_FOREVER, &BlockCallback, &ts, false);
 Task deBlock(BlockDuration * TASK_MILLISECOND, TASK_FOREVER, &deBlockCallback, &ts, false);
+Task InvertDisplayYes(HitDisplayedDuration2 * TASK_MILLISECOND, TASK_FOREVER, &InvertDisplayYesCallback, &lowts, false);
+Task InvertDisplayNo(HitDisplayedDuration2 * TASK_MILLISECOND, TASK_FOREVER, &InvertDisplayNoCallback, &lowts, false);
+Task WeHaveWinner(TASK_IMMEDIATE, TASK_FOREVER, &WeHaveWinnerCallback, &lowts, false);
+Task ShowWinner(TASK_IMMEDIATE, TASK_FOREVER, &ShowWinnerCallback, &lowts, false);
+Task ShowScore(TASK_IMMEDIATE, TASK_FOREVER, &ShowScoreCallback, &lowts, false);
+Task ResetScore(TASK_IMMEDIATE, TASK_FOREVER, &ResetScoreCallback, &lowts, false);
+//Task AnimateOnDisplay(TASK_IMMEDIATE, TASK_FOREVER, &AnimateOnDisplayCallback, &lowts, false);
 bool onFlag = false;
 
 // Create a new instance of the MD_Parola class with hardware SPI connection
@@ -49,6 +66,9 @@ MD_Parola myDisplay = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
 void setup() {
   // open the serial port at 115200 bps:
   Serial.begin(115200);
+
+  lowts.setHighPriorityScheduler(&ts); 
+  //lowts.enableAll(true); // this will recursively enable the higher priority tasks as well
 
   // initialize the LED pins as an output:
   pinMode(Fencer1LED, OUTPUT);
@@ -62,9 +82,26 @@ void setup() {
   pinMode(Fencer1, INPUT);
   pinMode(Fencer2, INPUT);
 
+  // Intialize the object for 8x8 LED display
+  myDisplay.begin();
+
+  // Set the intensity (brightness) of the 8x8 LED display (0 min - 15 max)
+  myDisplay.setIntensity(1);
+
+  // Clear the 8x8 LED display
+  myDisplay.displayClear();
+  //myDisplay.displayScroll("0:0", PA_CENTER, PA_SCROLL_LEFT, ScrollSpeed);
+  (String(Fencer1hits) + ":" + String(Fencer2hits)).toCharArray(Score, 10);
+  Serial.println("--");
+  Serial.println(Score);
+  myDisplay.setTextAlignment(PA_CENTER);
+  myDisplay.print(Score); 
+  //myDisplay.displayScroll(Score, PA_CENTER, PA_SCROLL_LEFT, ScrollSpeed);
+  //AnimateOnDisplay.enable();
+
   // initialize mesh
   mesh.setDebugMsgTypes(ERROR | DEBUG | CONNECTION);  // set before init() so that you can see error messages
-  mesh.init(MESH_SSID, MESH_PASSWORD, &ts, MESH_PORT);
+  mesh.init(MESH_SSID, MESH_PASSWORD, &lowts, MESH_PORT);
   mesh.setName(BaseNodeName); 
   //mesh.onReceive(&receivedCallback);
   mesh.onReceive([](uint32_t from, String &msg) {
@@ -74,7 +111,28 @@ void setup() {
   mesh.onReceive([](String &from, String &msg) {
     Serial.printf("Received message by name from: %s, %s\n", from.c_str(), msg.c_str());
     if(msg == F1HitMsg){ //Fencer 1 scores
-      Block.enable();  
+      Block.enable();
+      FencerHitSign = Fencer1HitSign;
+      InvertDisplayYes.enable();
+      InvertDisplayNo.enableDelayed(HitDisplayedDuration4);
+      tone(BuzzerPin, Fencer1HitSoundHz, HitSoundDuration);  
+      Fencer1hits = Fencer1hits + 1;
+      if (Fencer1hits >= CountTill){
+        WinnerIs = 1;
+        WeHaveWinner.enable();
+      }
+    }
+    if(msg == F2HitMsg){ //Fencer 2 scores
+      Block.enable();
+      FencerHitSign = Fencer2HitSign;
+      InvertDisplayYes.enable();
+      InvertDisplayNo.enableDelayed(HitDisplayedDuration4);
+      tone(BuzzerPin, Fencer2HitSoundHz, HitSoundDuration);  
+      Fencer2hits = Fencer2hits + 1;
+      if (Fencer2hits >= CountTill){
+        WinnerIs = 2;
+        WeHaveWinner.enable();
+      }  
     }
   });
   mesh.onNewConnection(&newConnectionCallback);
@@ -105,20 +163,10 @@ void setup() {
                                  (mesh.getNodeTime() % (BLINK_PERIOD * 1000)) / 1000);
     }
   });
-  ts.addTask(blinkNoNodes);
+  lowts.addTask(blinkNoNodes);
   blinkNoNodes.enable();
 
   randomSeed(analogRead(A0));
-
-  // Intialize the object for 8x8 LED display
-  myDisplay.begin();
-
-  // Set the intensity (brightness) of the 8x8 LED display (0 min - 15 max)
-  myDisplay.setIntensity(3);
-
-  // Clear the 8x8 LED display
-  myDisplay.displayClear();
-  myDisplay.displayScroll("0:0", PA_CENTER, PA_SCROLL_LEFT, ScrollSpeed);
 }
 
 void BlockCallback() {
@@ -133,8 +181,76 @@ void deBlockCallback() {
     deBlock.disable();
     mesh.sendBroadcast(deBlockMsg);
     Serial.println("----deBLOCK-----");
+    tone(BuzzerPin, ReadySoundHz, ReadySoundDuration);
+    //myDisplay.displayClear();
+    InvertDisplayYes.disable();
+    InvertDisplayNo.disable();
+    myDisplay.setInvert(false);
+    (String(Fencer1hits) + ":" + String(Fencer2hits)).toCharArray(Score, 10);
+    Serial.println("--");
+    Serial.println(Score);
+    //myDisplay.displayReset();
+    //myDisplay.displayClear();
+    myDisplay.print(Score);
+    //myDisplay.displayScroll(Score, PA_CENTER, PA_SCROLL_LEFT, ScrollSpeed);
+    //AnimateOnDisplay.enable();
 }
 
+void InvertDisplayYesCallback() {
+  myDisplay.setInvert(true);
+  myDisplay.print(FencerHitSign);
+}
+
+void InvertDisplayNoCallback() {
+  myDisplay.setInvert(false);
+  myDisplay.print(FencerHitSign);
+}
+
+void WeHaveWinnerCallback() {
+  WeHaveWinner.disable();
+  deBlock.disable();
+  InvertDisplayYes.disable();
+  InvertDisplayNo.disable();
+  tone(BuzzerPin, ReadySoundHz, HitSoundDuration);
+  (String(WinnerIs) + "won").toCharArray(Winner, 10);
+  myDisplay.setInvert(true);
+  myDisplay.print(Winner);
+  ShowWinner.enableDelayed(5000);
+}
+
+void ShowWinnerCallback() {
+  ShowWinner.disable();
+  myDisplay.setInvert(false);
+  myDisplay.print(Winner);
+  ShowScore.enableDelayed(2000);
+}
+
+void ShowScoreCallback() {
+  ShowScore.disable();
+  myDisplay.setInvert(false);
+  (String(Fencer1hits) + ":" + String(Fencer2hits)).toCharArray(Score, 10);
+  myDisplay.print(Score);
+  ResetScore.enableDelayed(6000);
+}
+
+void ResetScoreCallback() {
+  ResetScore.disable();
+  WinnerIs = 0;
+  Fencer1hits = 0;
+  Fencer2hits = 0;
+  deBlock.enable();
+}
+
+/*
+void AnimateOnDisplayCallback() {
+  //scroll the actual score over the 8x8 LED display
+  if (myDisplay.displayAnimate()) {
+    myDisplay.displayReset();
+  }
+}
+*/
+
+/*
 //function Hit is called after the hit is detected
 //void Hit(int FencerLED, char FencerHitSign[], int FencerHitSoundHz, int F1hits, int F2hits) {
 void Hit(int FencerLED, int FencerHitSoundHz, int F1hits, int F2hits) {
@@ -166,16 +282,11 @@ void Hit(int FencerLED, int FencerHitSoundHz, int F1hits, int F2hits) {
   digitalWrite(FencerLED, HIGH);
   digitalWrite(ReadyLED, LOW);
 }
+*/
 
 void loop() {
   mesh.update();
   digitalWrite(LED, !onFlag);
-
-  //scroll the actual score over the 8x8 LED display
-  if (myDisplay.displayAnimate()) {
-    myDisplay.displayReset();
-  }
-
 }
 
 void sendMessage() {

@@ -2,7 +2,7 @@
 // Mesh
 String BaseNodeName =     "FencerBase";   // Name needs to be unique  
 String F1NodeName =       "Fencer1";      // Name needs to be unique
-String F2NodeName =  "Fencer2";      // Name needs to be unique
+String F2NodeName =       "Fencer2";      // Name needs to be unique
 String nodeName = BaseNodeName;
 #define   MESH_SSID       "FencerMesh"    // mesh name
 #define   MESH_PASSWORD   "dArtagnan"     // mesh password
@@ -24,7 +24,7 @@ String deBlockMsg = "deBLOCK";
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
 //#define HARDWARE_TYPE MD_MAX72XX::GENERIC_HW
 
-#define MAX_DEVICES 1 // Number of 8x8 LED displays
+#define MAX_DEVICES 3 // Number of 8x8 LED displays
 #define CS_PIN D6     // Cable Select PIN (D6)
 /*
  * CS  - MISO/D6
@@ -40,16 +40,19 @@ const int Fencer1LED = D3;               // Fencer 1 hit signal LED PIN (D3 inte
 const int Fencer2LED = D1;               // Fencer 2 hit signal LED PIN (D4 pull-up needed 330 Ohm) 
 const int ReadyLED = D4;                 // Green ready LED PIN (D4 internal 10k pull-up)
 const int BuzzerPin = D2;                // Buzzer PIN (D2)
-const String Fencer1HitSign = ">>";      // Fencer 1 hit sign for display
-const String Fencer2HitSign = "<<";      // Fencer 2 hit sign for display
+const String Fencer1HitSign = ">>>";      // Fencer 1 hit sign for display
+const String Fencer2HitSign = "<<<";      // Fencer 2 hit sign for display
 const int Fencer1HitSoundHz = 440;       // Fencer 1 hit sound pitch in Hz
-const int Fencer2HitSoundHz = 880;       // Fencer 2 hit sound pitch in Hz
+const int Fencer2HitSoundHz = 920;       // Fencer 2 hit sound pitch in Hz
 const int HitSoundDuration = 500;        // Hit sound duration in ms
-const int HitDisplayedDuration = 2000;   // Hit sound duration in ms
+const int HitDisplayedDuration = 2000;   // Hit display duration in ms
+const int HitDisplayedDuration2 = (HitDisplayedDuration/2);   // 1/2 of hit display duration in ms
+const int HitDisplayedDuration4 = (HitDisplayedDuration/4);   // 1/4 of hit display duration in ms
 const int BlockDuration = 2000;          // Duration of the block after the hit
 const int ReadySoundHz = 220;            // Ready sound pitch in Hz
 const int ReadySoundDuration = 50;       // Ready sound duration in ms
 const int ScrollSpeed =  200;            // Speed of scrolling in ms
+const int CountTill =  15;               // Counts till this number
 
 // variables will change:
 int Fencer1hit = 0;                      // Fencer 1 scores
@@ -57,4 +60,6 @@ int Fencer2hit = 0;                      // Fencer 2 scores
 int Fencer1hits = 0;                     // Fencer 1 score (hit counter)
 int Fencer2hits = 0;                     // Fencer 2 score (hit counter)
 char Score[10]  = "0:0";                 // Score to display
+char Winner[10]  = "xxx";                // Winner to display
 String FencerHitSign = "";               // Hit sign to display
+int WinnerIs = 0;                        // who is the winner? [0 = no winner yet|1|2]

@@ -1,8 +1,12 @@
 // Definings
 // Mesh
 String BaseNodeName =     "FencerBase";   // Name needs to be unique  
+String MyNodeName =       "Fencer2";      // Name needs to be unique
+String OponentNodeName =  "Fencer1";      // Name needs to be unique
+/*
 String MyNodeName =       "Fencer1";      // Name needs to be unique
 String OponentNodeName =  "Fencer2";      // Name needs to be unique
+ */
 String nodeName = MyNodeName;
 #define   MESH_SSID       "FencerMesh"    // mesh name
 #define   MESH_PASSWORD   "dArtagnan"     // mesh password

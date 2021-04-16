@@ -24,7 +24,10 @@ void delayReceivedCallback(uint32_t from, int32_t delay);
 void CheckHitCallback();
 void SendHitCallback();
 
-Scheduler     ts; // to control your personal task
+#define _TASK_PRIORITY
+#define _TASK_TIMECRITICAL
+
+Scheduler     lowts, ts; // to control your personal task
 //painlessMesh  mesh;
 namedMesh  mesh;
 
@@ -44,6 +47,9 @@ void setup() {
   // open the serial port at 115200 bps:
   Serial.begin(115200);
 
+  lowts.setHighPriorityScheduler(&ts); 
+  lowts.enableAll(true); // this will recursively enable the higher priority tasks as well
+
   // initialize the LED pins as an output:
   pinMode(GreenLED, OUTPUT);
   digitalWrite(GreenLED, HIGH);
@@ -55,7 +61,7 @@ void setup() {
 
   // initialize mesh
   mesh.setDebugMsgTypes(ERROR | DEBUG | CONNECTION);  // set before init() so that you can see error messages
-  mesh.init(MESH_SSID, MESH_PASSWORD, &ts, MESH_PORT);
+  mesh.init(MESH_SSID, MESH_PASSWORD, &lowts, MESH_PORT);
   mesh.setName(MyNodeName);
   //mesh.onReceive(&receivedCallback);
   mesh.onReceive([](uint32_t from, String &msg) {
@@ -98,7 +104,7 @@ void setup() {
                                  (mesh.getNodeTime() % (BLINK_PERIOD * 1000)) / 1000);
     }
   });
-  ts.addTask(blinkNoNodes);
+  lowts.addTask(blinkNoNodes);
   blinkNoNodes.enable();
   CheckHit.enable();
 
@@ -121,6 +127,7 @@ void CheckHitCallback() {
 void SendHitCallback() {
   SendHit.disable();
   mesh.sendSingle(BaseNodeName, HitMsg);
+  digitalWrite(GreenLED, LOW);
 }
 
 
