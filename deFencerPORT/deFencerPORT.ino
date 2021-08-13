@@ -71,6 +71,8 @@ void setup() {
   mesh.onReceive([](String &from, String &msg) {
     Serial.printf("Received message by name from: %s, %s\n", from.c_str(), msg.c_str());
     if(msg == BlockMsg){
+      //double hit delay should come somewhere here
+      CheckHit.disable();
       digitalWrite(RedLED, LOW);  
     }
     if(msg == deBlockMsg){ 
@@ -135,8 +137,8 @@ void sendMessage() {
   String msg = "Hello from node ";
   //msg += mesh.getNodeId();
   msg += nodeName;
-  msg += " myFreeMemory: " + String(ESP.getFreeHeap());
-  msg += " myMillis: " + String(millis());
+  //msg += " myFreeMemory: " + String(ESP.getFreeHeap());
+  //msg += " myMillis: " + String(millis());
   mesh.sendBroadcast(msg);
 
   if (calc_delay) {
