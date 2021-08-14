@@ -17,7 +17,7 @@ String deBlockMsg = "deBLOCK";
 // on my rig, this is 5, change to the right number of your LED.
 #define   LED             D4       // GPIO number of connected LED, ON ESP-12 IS GPIO2
 
-#define   BLINK_PERIOD    3000 // milliseconds until cycle repeat
+#define   BLINK_PERIOD    500 // milliseconds until cycle repeat (after hit)
 #define   BLINK_DURATION  100  // milliseconds LED is on for
 
 // 8x8 LED display driver type hardware type
@@ -59,7 +59,9 @@ int Fencer1hit = 0;                      // Fencer 1 scores
 int Fencer2hit = 0;                      // Fencer 2 scores
 int Fencer1hits = 0;                     // Fencer 1 score (hit counter)
 int Fencer2hits = 0;                     // Fencer 2 score (hit counter)
-char Score[10]  = "0:0";                 // Score to display
+char Score[10]  = "init 0";                // Score to display
 char Winner[10]  = "xxx";                // Winner to display
 String FencerHitSign = "";               // Hit sign to display
 int WinnerIs = 0;                        // who is the winner? [0 = no winner yet|1|2]
+int NodesConnected = 0;                  // Number of nodes connected
+int MeshEstablished = 0;                 // Are there 3 nodes connected? 0 = no | 1 = yes

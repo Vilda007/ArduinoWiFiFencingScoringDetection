@@ -26,7 +26,7 @@ void delayReceivedCallback(uint32_t from, int32_t delay);
 #define _TASK_PRIORITY
 #define _TASK_TIMECRITICAL
 
-Scheduler     lowts, ts; 
+Scheduler     lowts, ts;
 //painlessMesh  mesh;
 namedMesh  mesh;
 
@@ -34,7 +34,7 @@ bool calc_delay = false;
 SimpleList<uint32_t> nodes;
 
 // Prototypes
-void sendMessage() ; 
+void sendMessage() ;
 void BlockCallback();
 void deBlockCallback();
 void InvertDisplayYesCallback();
@@ -67,7 +67,7 @@ void setup() {
   // open the serial port at 115200 bps:
   Serial.begin(115200);
 
-  lowts.setHighPriorityScheduler(&ts); 
+  lowts.setHighPriorityScheduler(&ts);
   //lowts.enableAll(true); // this will recursively enable the higher priority tasks as well
 
   // initialize the LED pins as an output:
@@ -91,48 +91,53 @@ void setup() {
   // Clear the 8x8 LED display
   myDisplay.displayClear();
   //myDisplay.displayScroll("0:0", PA_CENTER, PA_SCROLL_LEFT, ScrollSpeed);
-  (String(Fencer1hits) + ":" + String(Fencer2hits)).toCharArray(Score, 10);
-  Serial.println("--");
+  /*
+  if (MeshEstablished == 1) {
+    (String(Fencer1hits) + ":" + String(Fencer2hits)).toCharArray(Score, 10);
+  }
+  */
+  //Serial.println("--");
   Serial.println(Score);
   myDisplay.setTextAlignment(PA_CENTER);
-  myDisplay.print(Score); 
+  myDisplay.print(Score);
   //myDisplay.displayScroll(Score, PA_CENTER, PA_SCROLL_LEFT, ScrollSpeed);
   //AnimateOnDisplay.enable();
 
   // initialize mesh
-  mesh.setDebugMsgTypes(ERROR | DEBUG | CONNECTION);  // set before init() so that you can see error messages
+  mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
+  //mesh.setDebugMsgTypes( ERROR | STARTUP );  // set before init() so that you can see startup messages
   mesh.init(MESH_SSID, MESH_PASSWORD, &lowts, MESH_PORT);
-  mesh.setName(BaseNodeName); 
+  mesh.setName(BaseNodeName);
   //mesh.onReceive(&receivedCallback);
-  mesh.onReceive([](uint32_t from, String &msg) {
+  mesh.onReceive([](uint32_t from, String & msg) {
     //Serial.printf("Received message by id from: %u, %s\n", from, msg.c_str());
   });
 
-  mesh.onReceive([](String &from, String &msg) {
+  mesh.onReceive([](String & from, String & msg) {
     Serial.printf("Received message by name from: %s, %s\n", from.c_str(), msg.c_str());
-    if(msg == F1HitMsg){ //Fencer 1 scores
+    if (msg == F1HitMsg) { //Fencer 1 scores
       Block.enable();
       FencerHitSign = Fencer1HitSign;
       InvertDisplayYes.enable();
       InvertDisplayNo.enableDelayed(HitDisplayedDuration4);
-      tone(BuzzerPin, Fencer1HitSoundHz, HitSoundDuration);  
+      tone(BuzzerPin, Fencer1HitSoundHz, HitSoundDuration);
       Fencer1hits = Fencer1hits + 1;
-      if (Fencer1hits >= CountTill){
+      if (Fencer1hits >= CountTill) {
         WinnerIs = 1;
         WeHaveWinner.enable();
       }
     }
-    if(msg == F2HitMsg){ //Fencer 2 scores
+    if (msg == F2HitMsg) { //Fencer 2 scores
       Block.enable();
       FencerHitSign = Fencer2HitSign;
       InvertDisplayYes.enable();
       InvertDisplayNo.enableDelayed(HitDisplayedDuration4);
-      tone(BuzzerPin, Fencer2HitSoundHz, HitSoundDuration);  
+      tone(BuzzerPin, Fencer2HitSoundHz, HitSoundDuration);
       Fencer2hits = Fencer2hits + 1;
-      if (Fencer2hits >= CountTill){
+      if (Fencer2hits >= CountTill) {
         WinnerIs = 2;
         WeHaveWinner.enable();
-      }  
+      }
     }
   });
   mesh.onNewConnection(&newConnectionCallback);
@@ -159,41 +164,45 @@ void setup() {
       blinkNoNodes.setIterations((mesh.getNodeList().size() + 1) * 2);
       // Calculate delay based on current mesh time and BLINK_PERIOD
       // This results in blinks between nodes being synced
-      blinkNoNodes.enableDelayed(BLINK_PERIOD -
-                                 (mesh.getNodeTime() % (BLINK_PERIOD * 1000)) / 1000);
+      if (NodesConnected < 2) {
+        blinkNoNodes.enableDelayed(BLINK_PERIOD - (mesh.getNodeTime() % (BLINK_PERIOD * 1000)) / 1000);
+      } else {
+        blinkNoNodes.disable();
+      }
     }
   });
   lowts.addTask(blinkNoNodes);
-  blinkNoNodes.enable();
+  blinkNoNodes.disable();
 
   randomSeed(analogRead(A0));
 }
 
 void BlockCallback() {
-    Block.disable();
-    mesh.sendBroadcast(BlockMsg);
-    Serial.println("----BLOCK-----");
-    //deBlock.reset();
-    deBlock.enableDelayed();
+  Block.disable();
+  mesh.sendBroadcast(BlockMsg);
+  Serial.println("----BLOCK-----");
+  //deBlock.reset();
+  blinkNoNodes.enableDelayed(BLINK_PERIOD - (mesh.getNodeTime() % (BLINK_PERIOD * 1000)) / 1000);
+  deBlock.enableDelayed();
 }
 
 void deBlockCallback() {
-    deBlock.disable();
-    mesh.sendBroadcast(deBlockMsg);
-    Serial.println("----deBLOCK-----");
-    tone(BuzzerPin, ReadySoundHz, ReadySoundDuration);
-    //myDisplay.displayClear();
-    InvertDisplayYes.disable();
-    InvertDisplayNo.disable();
-    myDisplay.setInvert(false);
-    (String(Fencer1hits) + ":" + String(Fencer2hits)).toCharArray(Score, 10);
-    Serial.println("--");
-    Serial.println(Score);
-    //myDisplay.displayReset();
-    //myDisplay.displayClear();
-    myDisplay.print(Score);
-    //myDisplay.displayScroll(Score, PA_CENTER, PA_SCROLL_LEFT, ScrollSpeed);
-    //AnimateOnDisplay.enable();
+  deBlock.disable();
+  mesh.sendBroadcast(deBlockMsg);
+  Serial.println("----deBLOCK-----");
+  tone(BuzzerPin, ReadySoundHz, ReadySoundDuration);
+  //myDisplay.displayClear();
+  InvertDisplayYes.disable();
+  InvertDisplayNo.disable();
+  myDisplay.setInvert(false);
+  (String(Fencer1hits) + ":" + String(Fencer2hits)).toCharArray(Score, 10);
+  Serial.println("--");
+  Serial.println(Score);
+  //myDisplay.displayReset();
+  //myDisplay.displayClear();
+  myDisplay.print(Score);
+  //myDisplay.displayScroll(Score, PA_CENTER, PA_SCROLL_LEFT, ScrollSpeed);
+  //AnimateOnDisplay.enable();
 }
 
 void InvertDisplayYesCallback() {
@@ -241,49 +250,6 @@ void ResetScoreCallback() {
   deBlock.enable();
 }
 
-/*
-void AnimateOnDisplayCallback() {
-  //scroll the actual score over the 8x8 LED display
-  if (myDisplay.displayAnimate()) {
-    myDisplay.displayReset();
-  }
-}
-*/
-
-/*
-//function Hit is called after the hit is detected
-//void Hit(int FencerLED, char FencerHitSign[], int FencerHitSoundHz, int F1hits, int F2hits) {
-void Hit(int FencerLED, int FencerHitSoundHz, int F1hits, int F2hits) {
-  digitalWrite(ReadyLED, HIGH);
-  digitalWrite(FencerLED, LOW);
-  tone(BuzzerPin, FencerHitSoundHz, HitSoundDuration);
-  int HitDisplayed = HitDisplayedDuration / 4;
-  myDisplay.displayReset();
-  myDisplay.displayClear();
-  myDisplay.setTextAlignment(PA_CENTER);
-  myDisplay.print(FencerHitSign);
-  delay(HitDisplayed);
-  myDisplay.setInvert(true);
-  myDisplay.print(FencerHitSign);
-  delay(HitDisplayed);
-  myDisplay.setInvert(false);
-  myDisplay.print(FencerHitSign);
-  delay(HitDisplayed);
-  myDisplay.setInvert(true);
-  myDisplay.print(FencerHitSign);
-  delay(HitDisplayed);
-  myDisplay.setInvert(false);
-  tone(BuzzerPin, ReadySoundHz, ReadySoundDuration);
-  myDisplay.displayClear();
-  (String(F1hits) + ":" + String(F2hits)).toCharArray(Score, 10);
-  Serial.println("--");
-  Serial.println(Score);
-  myDisplay.displayScroll(Score, PA_CENTER, PA_SCROLL_LEFT, ScrollSpeed);
-  digitalWrite(FencerLED, HIGH);
-  digitalWrite(ReadyLED, LOW);
-}
-*/
-
 void loop() {
   mesh.update();
   digitalWrite(LED, !onFlag);
@@ -313,7 +279,21 @@ void sendMessage() {
 void newConnectionCallback(uint32_t nodeId) {
   // Reset blink task
   onFlag = false;
-  blinkNoNodes.setIterations((mesh.getNodeList().size() + 1) * 2);
+  NodesConnected = mesh.getNodeList().size();
+  if ((NodesConnected == 2) && (MeshEstablished == 0)) {
+    // 3 nodes connected to mesh - enabling the counter
+    MeshEstablished = 1;
+    ("init " + String(NodesConnected)).toCharArray(Score, 10);
+    myDisplay.print(Score);
+    delay(500);
+    deBlock.enable();
+    mesh.sendBroadcast(deBlockMsg);
+    char Score[10]  = "0:0";
+  } else {
+    ("init " + String(NodesConnected)).toCharArray(Score, 10);
+    myDisplay.print(Score);
+  }
+  blinkNoNodes.setIterations((NodesConnected + 1) * 2);
   blinkNoNodes.enableDelayed(BLINK_PERIOD - (mesh.getNodeTime() % (BLINK_PERIOD * 1000)) / 1000);
 
   Serial.printf("--> startHere: New Connection, nodeId = %u\n", nodeId);
@@ -325,7 +305,7 @@ void changedConnectionCallback() {
   // Reset blink task
   onFlag = false;
   blinkNoNodes.setIterations((mesh.getNodeList().size() + 1) * 2);
-  blinkNoNodes.enableDelayed(BLINK_PERIOD - (mesh.getNodeTime() % (BLINK_PERIOD * 1000)) / 1000);
+  //blinkNoNodes.enableDelayed(BLINK_PERIOD - (mesh.getNodeTime() % (BLINK_PERIOD * 1000)) / 1000);
 
   nodes = mesh.getNodeList();
 

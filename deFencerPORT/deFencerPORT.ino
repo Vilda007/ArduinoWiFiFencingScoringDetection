@@ -47,7 +47,7 @@ void setup() {
   // open the serial port at 115200 bps:
   Serial.begin(115200);
 
-  lowts.setHighPriorityScheduler(&ts); 
+  lowts.setHighPriorityScheduler(&ts);
   lowts.enableAll(true); // this will recursively enable the higher priority tasks as well
 
   // initialize the LED pins as an output:
@@ -64,19 +64,20 @@ void setup() {
   mesh.init(MESH_SSID, MESH_PASSWORD, &lowts, MESH_PORT);
   mesh.setName(MyNodeName);
   //mesh.onReceive(&receivedCallback);
-  mesh.onReceive([](uint32_t from, String &msg) {
+  mesh.onReceive([](uint32_t from, String & msg) {
     //Serial.printf("Received message by id from: %u, %s\n", from, msg.c_str());
   });
 
-  mesh.onReceive([](String &from, String &msg) {
+  mesh.onReceive([](String & from, String & msg) {
     Serial.printf("Received message by name from: %s, %s\n", from.c_str(), msg.c_str());
-    if(msg == BlockMsg){
+    if (msg == BlockMsg) {
       //double hit delay should come somewhere here
       CheckHit.disable();
-      digitalWrite(RedLED, LOW);  
+      digitalWrite(RedLED, LOW);
+      blinkNoNodes.enableDelayed(BLINK_PERIOD - (mesh.getNodeTime() % (BLINK_PERIOD * 1000)) / 1000);
     }
-    if(msg == deBlockMsg){ 
-      CheckHit.enable(); 
+    if (msg == deBlockMsg) {
+      CheckHit.enable();
       digitalWrite(RedLED, HIGH);
     }
   });
@@ -99,16 +100,21 @@ void setup() {
     if (blinkNoNodes.isLastIteration()) {
       // Finished blinking. Reset task for next run
       // blink number of nodes (including this node) times
-      blinkNoNodes.setIterations((mesh.getNodeList().size() + 1) * 2);
+      NodesConnected = mesh.getNodeList().size();
+      blinkNoNodes.setIterations((NodesConnected + 1) * 2);
       // Calculate delay based on current mesh time and BLINK_PERIOD
       // This results in blinks between nodes being synced
-      blinkNoNodes.enableDelayed(BLINK_PERIOD -
-                                 (mesh.getNodeTime() % (BLINK_PERIOD * 1000)) / 1000);
+      if (NodesConnected < 2) {
+        blinkNoNodes.enableDelayed(BLINK_PERIOD - (mesh.getNodeTime() % (BLINK_PERIOD * 1000)) / 1000);
+      } else {
+        blinkNoNodes.disable();
+      }
     }
   });
   lowts.addTask(blinkNoNodes);
-  blinkNoNodes.enable();
-  CheckHit.enable();
+  blinkNoNodes.disable();
+  CheckHit.disable();
+  digitalWrite(RedLED, LOW);
 
   randomSeed(analogRead(A0));
 }
@@ -119,7 +125,7 @@ void loop() {
 }
 
 void CheckHitCallback() {
-  if(digitalRead(Hit) == HIGH){
+  if (digitalRead(Hit) == HIGH) {
     CheckHit.disable();
     SendHit.enable();
     Serial.println(digitalRead(Hit));
@@ -170,7 +176,7 @@ void changedConnectionCallback() {
   // Reset blink task
   onFlag = false;
   blinkNoNodes.setIterations((mesh.getNodeList().size() + 1) * 2);
-  blinkNoNodes.enableDelayed(BLINK_PERIOD - (mesh.getNodeTime() % (BLINK_PERIOD * 1000)) / 1000);
+  //blinkNoNodes.enableDelayed(BLINK_PERIOD - (mesh.getNodeTime() % (BLINK_PERIOD * 1000)) / 1000);
 
   nodes = mesh.getNodeList();
 
